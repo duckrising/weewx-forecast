@@ -51,9 +51,9 @@ If you want OWM forecasts, obtain an api_key:
 
   http://openweathermap.org/appid
 
-If you want UK Met Office forecasts, obtain an api_key:
+If you want UK Met Office forecasts, obtain a Met Office Global Spot api_key:
 
-  http://metoffice.gov.uk/datapoint
+  https://www.metoffice.gov.uk/services/data/met-office-weather-datahub
 
 If you want Aeris forecasts, obtain a client id and client secret:
 
@@ -77,13 +77,17 @@ This is perhaps true of other distributions.
 You'll need to build it yourself and set the 'prog' variable in the xtide
 section.
 Example (building xtide)
+Note: the first two lines change to your home directory and set the mode on your home directory
+      such that the weewx user can find the tide program.
+  cd
+  chmod 755 .
   wget https://flaterco.com/files/xtide/xtide-2.15.5.tar.xz
-  (decompress and cd to directory)
+  (decompress and then cd to xtide-2.15.5 directory)
   sudo apt-get install libpng-dev
   sudo apt-get install libtcd-dev
-  ./configure
-  make
-Example (setting prog variable t point to where you have built xtide):
+  ./configure --with-x=no
+  make tide
+Example (setting prog variable to point to where you have built xtide):
 [Forecast]
     ...
     [[XTide]]
@@ -104,7 +108,13 @@ Installation instructions:
 
 1) run the installer:
 
-wee_extension --install weewx-forecast-3.4.0b11.zip
+For WeeWX 5:
+
+weectl extension install weewx-forecast-4.0.zip
+
+For WeeWX 4:
+
+wee_extension --install weewx-forecast-4.0.zip
 
 2) modify weewx.conf for your location:
 
@@ -141,8 +151,17 @@ wee_extension --install weewx-forecast-3.4.0b11.zip
     [[OWM]]
         api_key = XXXXXXXXXXXXXXXX   # specify an open weathermap api_key
     [[UKMO]]
+        # UK Met Office Datahub only needs an API Key.  It must be a key
+        # from the new Met Office Datahub Service.
+        # See: https://www.metoffice.gov.uk/services/data/met-office-weather-datahub
+        # One will need to sign up and obtain a key for global spot data.
+        # This extension uses the three hourly API.
+        # The forecast is generated for the lat long of the station as specified
+        # in weewx.conf.  If you would like a forecast for a different area, specify
+        # latitude and longitude in this section.
         api_key = XXXXXXXXXXXXXXXX   # specify a UK met office api_key
-        location = 2337              # specify code for UK location
+        latitude = 51.5081           # The latitude and longitude of the
+        longtitude = -0.0759         # point for which to generate a forecast.
     [[Aeris]]
         client_id = XXXXXXXXXXXXXXXX      # specify client identifier
         client_secret = XXXXXXXXXXXXXXXX  # specify client secret key
