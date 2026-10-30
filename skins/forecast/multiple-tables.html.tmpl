@@ -7,8 +7,8 @@
 <head>
   <title>Forecast Sampler: Multiple Tables</title>
   <meta charset="UTF-8">
-  <link rel='stylesheet' type='text/css' href='forecast.css'/>
-  <link rel='stylesheet' type='text/css' href='forecast_table.css' />
+  <link rel='stylesheet' type='text/css' href='forecast.css'>
+  <link rel='stylesheet' type='text/css' href='forecast_table.css'>
 </head>
 <body>
 
@@ -48,6 +48,10 @@ Display forecast data in multiple tables, one table for each forecast source.
 
 <h2>Aeris</h2>
 #set global $forecast_table_settings['source'] = 'Aeris'
+#include "forecast_table.inc"
+
+<h2>Pirate Weather</h2>
+#set global $forecast_table_settings['source'] = 'DS'
 #include "forecast_table.inc"
 
 </body>

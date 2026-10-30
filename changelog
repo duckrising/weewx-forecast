@@ -1,3 +1,324 @@
+5.4 16oct2026
+* ACTION REQUIRED if you use the sample forecast skin and never chose a
+  source: the four layouts now default to NWS instead of UKMO.  Each of
+  forecast_table.inc, forecast_strip.inc, forecast_iconic.inc and
+  forecast_compact.inc documents `source = NWS` at the top of the file and
+  then set UKMO in the code below, so the single-table, single-strip, iconic
+  and compact pages showed UKMO to every station no matter what it had
+  configured -- and UKMO needs an API key most stations don't have.  To
+  choose your own, set `source` in the forecast skin's skin.conf under the
+  layout's own subsection of [Extras] -- [[forecast_table_settings]],
+  [[forecast_strip_settings]], [[forecast_iconic_settings]] or
+  [[forecast_compact_settings]] -- or at the top of the include.  Reported
+  by barcik75 in issue #2.
+
+* The forecast table's `desc` column is now named `description`, and its
+  `offset` column `tide_offset`, which is what lets this extension run on
+  MySQL and MariaDB at all.  DESC is a reserved word in both, and OFFSET in
+  MariaDB 10.6 and later, while WeeWX's database layer backquotes exactly one
+  reserved word, `interval`.  So the CREATE TABLE -- and every INSERT that
+  carried a value for these fields -- was a syntax error, and the forecast
+  table could never be built.  Tested against MySQL 8.4 and MariaDB 11.8,
+  both in their default strict mode.  Existing sqlite databases are renamed
+  in place the first time weewxd starts; there is nothing to do by hand.
+  Templates that use $period.desc or $tide.offset keep working, since the
+  old names are still passed to the report engine.  The rename is one way:
+  to go back to 5.3 or earlier, first rename the columns back (description
+  to "desc", tide_offset to "offset") -- the manual's Configuration page
+  gives the two commands.  Reported by barcik75 in issue #2.
+
+* World Weather Online forecasts work again.  WWO retired its free/v2
+  endpoint, which this extension had always used, and it now answers every
+  request with 403.  The default is now the premium/v1 endpoint, which
+  accepts the key from a free WWO account as well as a paid one.  An error
+  WWO reports, such as a location it cannot match, is now logged in WWO's
+  own words, and a `url` left pointing at the retired free/v2 endpoint is
+  named in the log.  Reported by barcik75 in issue #2.
+
+* A `url` set in weewx.conf is now treated as a base URL by every downloading
+  source.  The API key, location and the other download parameters are
+  appended to it unless it already carries a query string, in which case it
+  is used exactly as written.  A Pirate Weather (DS) url that already holds
+  your API key is also used as written, since that service carries the key
+  and location in the path, and NWS still appends the forecast office
+  (`issuedby=`) unless your url already names one.  Previously the
+  parameters were added only when the url was left at its default, so anyone
+  pointing a source at a moved endpoint got a bare URL with no key and no
+  location -- which is why changing an endpoint meant editing forecast.py.
+
+* Sources you never configured no longer log errors at startup.  The
+  installer writes a stanza for all nine sources, most of them holding a
+  placeholder you are meant to replace, so a station using two of them
+  reported errors for the other seven every time weewxd started.  Each now
+  says once, at info, that it is not configured and will not run.  A source
+  that IS configured but cannot run -- UK Met Office on Python older than
+  3.7 -- still logs an error.
+
+* A damaged forecast table no longer stops WeeWX.  A table that does not
+  match the extension's schema used to raise an error that stopped weewxd at
+  startup -- archiving, uploads and reports along with forecasts.  The same
+  now holds for a table carrying both the old and new name of a renamed
+  column, and for a rename the database cannot do (it needs sqlite 3.25 or
+  later).  Each logs one error naming the problem, with the SQL to run by
+  hand where that helps, and the forecast sources stay idle while the rest
+  of WeeWX keeps running.
+
+* Tide levels no longer lose precision when XTide's own units preference is
+  set to meters.  tide was run without -u, so a preference saved in the
+  WeeWX user's ~/.xtide.xml switched its output to meters, which tide rounds
+  to two decimals; levels were converted back to feet but drifted by up to
+  about 0.015 ft.  tide is now always asked for feet.
+
+* The startup log no longer prints a thousand-character masked UK Met Office
+  key.  Masked credentials keep their last four characters behind at most 28
+  X's.
+
+* Removed the meteoplot link from the sample skin's index page.  This
+  extension has never shipped a meteoplot template, so the link had always
+  been a 404.  Reported by barcik75 in issue #2.
+
+* Dropped the second NWS URL constant, which pointed at
+  forecast-v3.weather.gov.  That host stopped resolving years ago.  The
+  default NWS forecast URL is unaffected and continues to work.
+
+* Documentation: the NWS point forecast lookup pointed at
+  http://www.nws.noaa.gov/oh/hads/USGS/, which now returns 403.  The live
+  address is https://hads.ncep.noaa.gov/USGS/
+
+5.3 31aug2026
+* OWM forecasts now record probability of precipitation and the daily minimum
+  and maximum temperature.  OpenWeatherMap sends `pop`, `main.temp_min` and
+  `main.temp_max` in every period and the parser had been discarding all
+  three; they now populate the pop, tempMin and tempMax columns, so
+  $forecast.weather_summary('OWM') reports them like any other source.  Found
+  by sbsrouteur, who reported it in pull request #1 in January 2021.
+
+  Visibility, which the same report proposed putting in obvis, is deliberately
+  not included: obvis is a three-character code for an obstruction to
+  visibility (fog, haze, blowing snow), not a distance, and OWM's `visibility`
+  is meters of visual range.  Mapping one to the other would take a threshold
+  table that the service does not supply.
+
+5.2 31aug2026
+* The installer now writes a commented configuration stanza.  The [Forecast],
+  [DataBindings], [Databases] and [StdReport] sections it merges into a fresh
+  weewx.conf arrive with comments explaining every option: what each of the
+  nine sources needs, where to get its API key, that the tide location is an
+  xtide location name, and that the services you do not use should be removed
+  from archive_services.  Previously those sections landed as bare key = value
+  lines, ten of them INSERT_..._HERE placeholders with nothing anywhere
+  saying what to put there.  No option changed its value or its meaning; this
+  affects fresh installs only, since the installer never rewrites a weewx.conf
+  that already has these sections.
+
+* Tide and UK Met Office forecasts now check the Python version at startup.
+  Both need Python 3.7: tide generation calls subprocess.run with
+  capture_output, and the UKMO parser calls datetime.fromisoformat.  On an
+  older Python, tides failed with a TypeError partway through generating a
+  forecast, and UKMO downloaded successfully and then died with an
+  AttributeError in every parse.  Each source now logs that it requires
+  Python 3.7 or later and declines to run, the same way they already do when
+  a location or an API key is missing.  The other seven sources are
+  unaffected and run as before.  The requirement is not new, it was simply
+  never stated nor checked.  The README and the manual now state it.
+
+  The tide check sits in both the service and XTideForecast.generate, so the
+  command-line harness reports the version too rather than raising TypeError.
+
+* Fix two invalid CSS properties in the iconic skin.  forecast_iconic.css
+  declared "webkit-radius" and "moz-radius", which are not properties -- the
+  vendor-prefixed spellings need a leading hyphen -- so both lines had never
+  done anything, and the "border-radius" beside them was already doing the
+  work.  Rendering is unchanged.  The Nu validator rejects them, but only
+  when it is pointed at the css: a validation run that globs *.html never
+  reads an external stylesheet, which is why these survived.
+  Also removed a duplicated forecast_strip.css from the skin's copy_once
+  list, which had been copying that one file twice.
+
+* Fix the command-line UKMO test harness, which could not run at all.  UKMO
+  is the one source keyed by latitude and longitude rather than a location
+  name, but --method=ukmo passed --loc where the code wanted latitude, and
+  omitted longitude entirely; the parse path passed a location keyword that
+  UKMOForecast.parse does not accept.  Both raised TypeError.  There are now
+  --latitude and --longitude options, and both UKMO paths use them.  Only the
+  command-line debugging tool was affected; UKMO forecasts running under
+  weewxd were never on this path.
+
+* Cut forecast.py's module docstring from 506 lines to 44.  It had carried a
+  full copy of the user reference -- the configuration stanza, the skin
+  options, every label, the template tags -- which the manual now covers, and
+  the two copies had already drifted (the Zambretti interval default was wrong
+  in the docstring for years).  What remains is what a reader of the code
+  needs: which service version each parser was written against, the two-part
+  design, why one table holds every method with unused fields left NULL, the
+  threading model, and the two sources that require Python 3.7.  install.py's
+  comments now point at the manual rather than at the docstring, so the text
+  the installer writes into weewx.conf sends users somewhere searchable.
+
+* Rework the README around the manual.  It had grown to 276 lines that
+  duplicated what the manual now covers -- the full configuration stanza, the
+  xtide build, the comparison report -- with the manual itself mentioned once,
+  below the copyright block.  It is now 139 lines: what the extension is, a
+  table of the nine sources, what you get, and the install commands, with
+  links into the manual for the detail.  Nothing was dropped; it moved.
+
+* Add a manual, published with GitHub Pages at
+  https://chaunceygardiner.github.io/weewx-forecast/.  Installation, every
+  option of all nine sources and where to get each API key, the $forecast
+  template tags, the full set of translatable labels, the comparison report
+  and troubleshooting.  Most of this reference existed only in a 500-line
+  comment at the top of forecast.py, where no user would find it.
+
+* Fix two documentation errors found while writing the manual: the README's
+  UK Met Office example spelled the option "longtitude", which the code does
+  not read (it reads "longitude").  A user copying that example lost BOTH
+  coordinates, not just the misspelled one: UKMO falls back to the station's
+  latitude and longitude when either is missing, so the correctly spelled
+  latitude was silently discarded too.  Also, forecast.py's configuration
+  comments gave the Zambretti interval default as 3600 when the code uses 600.
+
+* The weewx version check compares the major version numerically.  It was a
+  string comparison, which reads "10.0.0" as less than "4", so the extension
+  would have refused to load under weewx 10 and later with "WeeWX 4 is
+  required".  No released weewx is affected; this is a latent failure being
+  fixed before it can bite.
+
+5.1
+* Honor the shutdown flag that weewx 5.5 hands to report generators.  The
+  compare skin's ForecastPlotGenerator now checks it while scanning the
+  forecast database and while collecting data, and passes it on to weewx's
+  image generator, which checks it between plots.  Shutting weewxd down in
+  the middle of a report no longer waits for every comparison plot to be
+  drawn.  Earlier weewx releases have no such flag and are unaffected.
+
+* Fix weewxd being unable to shut down during a forecast update when
+  `single_thread = True`.  weewxd stops by raising Terminate from its SIGTERM
+  handler, inside whatever the main thread is running; do_forecast's broad
+  exception handler swallowed it as a forecast failure.  Terminate is now
+  handed back.  The threaded default (single_thread = False) was never
+  affected -- signals only reach the main thread.
+
+* Fix the error path in do_forecast: a failure in get_forecast (a download
+  error, say) raised UnboundLocalError from the handler itself -- it reports
+  dbm_dict, which is not assigned until after the forecast is fetched -- so
+  the real error was lost and the exception escaped instead of being logged.
+
+* Fix the compare report failing whenever there is no forecast data to plot:
+  a source that has not been downloaded yet, a misspelled source, or an
+  issued_since that excludes every issue.  The image generator was handed a
+  zero or negative time span and threw "scaletime called with tmax <= tmin"
+  for every plot, once per report cycle.  The generator now logs that it has
+  nothing to plot and stops.
+
+* The comparison generator's scratch database now lives beside the station's
+  own databases (SQLITE_ROOT, e.g. /home/weewx/archive/fpg.sdb) instead of at
+  the fixed /var/tmp/fpg.sdb.  It is deleted and recreated on every run, so
+  two weewx instances on one machine used to fight over the one file; now
+  each has its own.  It also no longer sits in a sticky, world-writable
+  directory, where a file left behind by another user could not be removed.
+  Nothing to configure.  A MySQL-only station has no SQLITE_ROOT; it gets a
+  pid-stamped file in the system temp directory instead (WEEWX_ROOT is no
+  place to write -- on a package install it is /etc/weewx).
+
+* The comparison generator's tests (test_cmp.py) now build a forecast
+  database with real data and check that the expected plots come out.  They
+  ran against an empty database before, so every one of them passed while
+  generating nothing.
+
+5.0.1
+* Fix the compare skin's obsolete doctype: index.html.tmpl declared an XHTML
+  1.0 Strict doctype, which HTML validators flag as obsolete.  It now uses the
+  HTML5 `<!DOCTYPE html>` (with `<html lang="en">`), matching the forecast skin.
+
+* Remove trailing slashes from void elements (`<br>`, `<img>`, `<link>`)
+  throughout the forecast and compare skins.  Under the HTML5 doctype the Nu
+  Html Checker flagged every self-closed void element ("Trailing slash on void
+  elements has no effect and interacts badly with unquoted attribute values"),
+  producing thousands of validator messages across the generated pages.  This
+  is purely a markup cleanup; the rendered output is unchanged.
+
+5.0
+* Dark Sky shut down its API.  The DS forecast source now points at Pirate
+  Weather (https://pirateweather.net), a free, open drop-in that speaks the
+  same protocol.  No weewx.conf restructuring is required: the [[DS]] section,
+  the DSForecast service, and the 'DS' method tag are all unchanged.  Dark Sky
+  users just replace their api_key with a Pirate Weather api_key (get one at
+  https://pirate-weather.apiable.io/).  (The DS name is kept internally to
+  avoid breaking existing service lists; the source is Pirate Weather.)
+
+* Fix XTide event timestamps for a tide station in a different timezone than
+  the weewx server.  tide is now run in UTC (-z) and parsed as UTC, so
+  event times are correct regardless of the station's zone.
+
+* Fix XTide error handling and robustness: a failing `tide` invocation crashed
+  (joining bytes with str) instead of logging the error; the return-code check
+  never fired (it read returncode before the process had exited) and the child
+  was never reaped.  The command is now built without a shell (a location
+  containing quotes can no longer break or inject into it) and has a timeout.
+
+* Fix UKMO wind speed, which was reported about 3.6x too low: the m/s wind
+  field was converted to mph with the km/h factor.
+
+* Fix a crash (NameError) in the Aeris parser when the service returns an
+  error response with success=false and error=null.
+
+* Fix crashes on present-but-null fields in the OWM, UKMO, WWO and Pirate
+  Weather (formerly Dark Sky) parsers.
+
+* Fix Pirate Weather precipitation.  precipAccumulation is the TOTAL
+  precipitation for the period, in inches under us units -- not snowfall in cm.
+  It was recorded as snow (qsf) with the wrong (cm) unit conversion, and rain
+  quantity (qpf) was never recorded at all (e.g. a rainy day reported snow).
+  It is now routed to qpf or qsf by precipType, in inches.
+
+* Fix the NE compass boundary in deg2dir: bearings just above 65.5 degrees
+  were labeled E instead of NE (the boundary is 67.5 degrees).
+
+* Fix a NWS parse crash (KeyError) when a point-forecast block contains only
+  3-hourly or only 6-hourly rows.
+
+* Fix the daily weather summary: a period falling exactly on local midnight was
+  counted in two days (inflating qpf/qsf totals), and periods near midnight
+  were mis-grouped by an hour on daylight-saving-transition days.
+
+* Close the HTTP response in every download path (previously the socket
+  leaked), and do not sleep after the final failed save/prune retry.
+
+* Remove Python 2 remnants (the cjson/simplejson import fallback and the
+  related dead code); the extension is Python 3 only.
+
+* Fix several bugs that kept the compare skin's comparison report from working:
+  - ForecastPlotGenerator wrote its plot images to the top-level public_html
+    instead of the report's own HTML_ROOT (e.g. public_html/compare).
+  - the skin never rendered its index.html page because its generator list
+    omitted CheetahGenerator; it is now included.
+  - the plot fonts referenced the obsolete /usr/share/fonts/truetype/ttf-dejavu
+    path, so plots failed on current systems; now /usr/share/fonts/truetype/dejavu.
+  - a single-source plot (e.g. 'source = NWS') was iterated character by
+    character ('N', 'W', 'S') because a str passes the "is it iterable?" guard,
+    so the per-source comparison plots never found any data; a single source is
+    now wrapped in a list.
+  The compare skin also gains a Pirate Weather column.
+
+* The automated test suite now runs green: parser tests against freshly
+  captured responses (Pirate Weather, Weather Underground, UK Met Office, Open
+  Weather Map, Aeris), XTide against the real tide program, and the compare
+  skin's generator.  Pirate Weather gains its first tests.
+
+4.2
+* Handle change to how events are formatted in xtide 2.16
+
+  Location in xtide 2.15 and earlier substitute '|' for , in location:
+      Palo Alto Yacht Harbor| San Francisco Bay| California,2024-07-07,1:12 AM PDT,8.50 ft,High Tide
+  In xtide 2.16, location contains commas and the field is enclosed in quotes:
+      "Palo Alto Yacht Harbor, San Francisco Bay, California",2024-07-07,1:12 AM PDT,8.50 ft,"High Tide"
+
+* Convert readme.txt to markdown (README.md); update its xtide build
+  instructions to install xtide 2.16 and the latest harmonics data.
+
+4.1
+* Remove dependecy on six since Python 2 is long dead.
+
 3.5
 * Add install instructions for WeeWX 5.
 * Add instructions on how to build xtide if not available in OS distribution.
