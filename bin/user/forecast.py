@@ -2981,14 +2981,19 @@ class UKMOForecast(Forecast):
                 r['snowshwrs'] =   UKMOForecast.code_from_precip_chance(period['probOfHeavySnow'])
                 r['hail']      =   UKMOForecast.code_from_precip_chance(period['probOfHail'])
                 # feelslike 'F'
-                r["feelsLike"] = period['feelsLikeTemp'] * 9.0 / 5.0 + 32 
+                _feels = UKMOForecast.str2float(
+                    'feelsLikeTemp', period['feelsLikeTemp'], UKMOForecast.KEY)
+                r["feelsLike"] = _feels * 9.0 / 5.0 + 32 \
+                    if _feels is not None else None
                 # weather type 'W'
                 r["weatherType"] = period['significantWeatherCode']
                 r['uvIndex'] = period['uvIndex']
                 if loc is not None:
                     r['location'] = loc
                 records.append(r)
-            except KeyError as e:
+            except (KeyError, TypeError, ValueError) as e:
+                # Drop just this period; any other bad value would otherwise
+                # escape and discard the whole download.
                 msg = '%s: failure in forecast period %d: %s' % (
                     UKMOForecast.KEY, cnt, e)
                 msgs.append(msg)
